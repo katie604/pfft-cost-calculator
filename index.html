@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What Is This Really Costing You?</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,500;1,600;1,700;1,800&display=swap" rel="stylesheet">
+
+  <!-- Tailwind Play CDN (supports arbitrary values like text-[10px], rounded-[28px]) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React 18 + Babel standalone -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+/* --- Reset: zero margin, calculator fills the viewport --- */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+body {
+  background: #ffffff;
+}
+
+/* --- Brand typography (PFFT: Figtree, the web stand-in for Canva Sans) --- */
+.font-display {
+  font-family: 'Figtree', system-ui, sans-serif;
+}
+.font-body {
+  font-family: 'Figtree', system-ui, sans-serif;
+}
+
+/* --- Range slider (gold thumb, navy ring, light track) --- */
+input[type='range'].brand-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: #e4e9f0;
+  border-radius: 999px;
+  outline: none;
+}
+input[type='range'].brand-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  background: #fdc055;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 3px solid #154373;
+  box-shadow: 0 2px 8px rgba(21, 67, 115, 0.25);
+  transition: transform 0.15s;
+}
+input[type='range'].brand-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+}
+input[type='range'].brand-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  background: #fdc055;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 3px solid #154373;
+  box-shadow: 0 2px 8px rgba(21, 67, 115, 0.25);
+}
+
+/* --- Number input --- */
+.number-input {
+  font-family: 'Figtree', system-ui, sans-serif;
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid #c2ccdb;
+  padding: 4px 0;
+  width: 100%;
+  outline: none;
+  color: #154373;
+  font-size: 1.5rem;
+  font-weight: 700;
+  transition: border-color 0.2s;
+}
+.number-input:focus {
+  border-bottom-color: #fdc055;
+}
+.number-input::-webkit-outer-spin-button,
+.number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.number-input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+/* --- Animations --- */
+@keyframes pulse-in {
+  0% {
+    transform: scale(0.94);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.pulse-in {
+  animation: pulse-in 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+/* --- Connector line between sections (solid, no gradient per PFFT spec) --- */
+.connector {
+  width: 1.5px;
+  height: 40px;
+  background: #e4e9f0;
+  margin: 0 auto;
+}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState } = React;
+
+/* ──────────────────────────────────────────────────────────────
+   PFFT brand theme. Swap this block to re-skin for another brand.
+   Anchors come straight from the PFFT logo: navy #154373 + gold
+   #fdc055 on a white canvas. Supporting tones are derived.
+   ────────────────────────────────────────────────────────────── */
+const T = {
+  pageBg: '#FFFFFF',
+  surface: '#F5F7FA',        // light input cards on white
+  surfaceBorder: '#E4E9F0',  // hairlines on light cards
+  navy: '#154373',           // emphasis panels, primary text
+  navyBorder: '#2C5A92',     // hairlines on navy panels
+  gold: '#fdc055',           // accent: big numbers, fills, hero
+  success: '#1F9D55',        // positive / on-track (fee % over goal)
+  ink: '#154373',            // primary text on white
+  inkMuted: '#5A6B86',       // labels on white
+  inkFaint: '#8A98AD',       // hints on white
+  onNavy: '#FFFFFF',         // text on navy panels
+  onNavyMuted: '#AFC3DE',    // muted text on navy panels
+  heroBg: '#fdc055',         // gold hero panel
+  heroInk: '#154373',        // navy text on gold hero
+};
+
+const SliderField = ({ label, value, onChange, min, max, step = 1, unit = '', minLabel, maxLabel }) => (
+  <div>
+    <div className="flex items-baseline justify-between mb-3">
+      <label className="text-[11px] font-bold uppercase tracking-[0.15em]" style={{ color: T.inkMuted }}>{label}</label>
+      <span className="font-display text-xl font-bold tabular-nums" style={{ color: T.ink }}>{value}{unit}</span>
+    </div>
+    <input type="range" min={min} max={max} step={step} value={value}
+      onChange={(e) => onChange(Number(e.target.value))} className="brand-slider" />
+    <div className="flex justify-between text-[10px] mt-1.5 font-medium" style={{ color: T.inkFaint }}>
+      <span>{minLabel ?? `${min}${unit}`}</span>
+      <span>{maxLabel ?? `${max}${unit}`}</span>
+    </div>
+  </div>
+);
+
+const DollarField = ({ label, value, onChange, step = 100, suffix = '' }) => (
+  <div>
+    <label className="text-[11px] font-bold uppercase tracking-[0.15em] block mb-2" style={{ color: T.inkMuted }}>{label}</label>
+    <div className="flex items-baseline gap-2">
+      <span className="font-display text-2xl font-semibold" style={{ color: T.inkMuted }}>$</span>
+      <input type="number" value={value} onChange={(e) => onChange(Math.max(0, Number(e.target.value)))}
+        className="number-input" min="0" step={step} />
+      {suffix && <span className="text-xs" style={{ color: T.inkFaint }}>{suffix}</span>}
+    </div>
+  </div>
+);
+
+const SectionHeader = ({ number, label, title, subtitle }) => (
+  <div className="mb-5 md:mb-6">
+    <div className="flex items-center gap-3 mb-3">
+      <span className="font-display text-5xl md:text-6xl font-bold leading-none tabular-nums" style={{ color: T.gold }}>{number}</span>
+      <div className="flex-1">
+        <div className="text-[10px] font-bold uppercase tracking-[0.3em]" style={{ color: T.inkMuted }}>{label}</div>
+        <h2 className="font-display text-2xl md:text-3xl font-semibold leading-tight" style={{ color: T.ink }}>{title}</h2>
+      </div>
+    </div>
+    {subtitle && (
+      <p className="text-sm md:text-base leading-relaxed max-w-2xl ml-0 md:ml-[88px]" style={{ color: T.inkMuted }}>{subtitle}</p>
+    )}
+  </div>
+);
+
+const VerdictBadge = ({ paysInQ1, paybackWeeks }) => {
+  if (paysInQ1) {
+    return (
+      <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-xs md:text-sm uppercase tracking-wider" style={{ backgroundColor: T.navy, color: T.onNavy }}>
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        Pays for itself in Q1 — no-brainer territory
+      </div>
+    );
+  }
+  if (paybackWeeks > 0 && isFinite(paybackWeeks)) {
+    return (
+      <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-xs md:text-sm uppercase tracking-wider" style={{ backgroundColor: T.navy, color: T.onNavy }}>
+        Longer than Q1 — tighten the scope
+      </div>
+    );
+  }
+  return (
+    <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-xs md:text-sm uppercase tracking-wider" style={{ backgroundColor: T.navy, color: T.onNavy }}>
+      Enter your numbers to see the verdict
+    </div>
+  );
+};
+
+const FeePercentBadge = ({ inSweetSpot, tooLow, tooHigh }) => {
+  if (inSweetSpot) return <span className="text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider" style={{ backgroundColor: T.success, color: '#FFFFFF' }}>✓ Sweet spot</span>;
+  if (tooLow) return <span className="text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider" style={{ backgroundColor: T.surfaceBorder, color: T.inkMuted }}>Under 10%</span>;
+  if (tooHigh) return <span className="text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider" style={{ backgroundColor: T.success, color: '#FFFFFF' }}>✓ Sweet spot</span>;
+  return null;
+};
+
+function Calculator() {
+  const [hourlyRate, setHourlyRate] = useState(100);
+  const [adminHours, setAdminHours] = useState(10);
+  const [worryHours, setWorryHours] = useState(3);
+  const [annualRevenue, setAnnualRevenue] = useState(750000);
+  const [marginLeak, setMarginLeak] = useState(3);
+  const [monthlyOverheads, setMonthlyOverheads] = useState(15000);
+  const [overheadDrift, setOverheadDrift] = useState(8);
+  const [setupFee, setSetupFee] = useState(1500);
+  const [monthlyFee, setMonthlyFee] = useState(650);
+
+  const fmt = (n) => `$${Math.round(n).toLocaleString()}`;
+  const fmtShort = (n) => {
+    if (n >= 1000000) return `$${(n / 1000000).toFixed(1)}M`;
+    if (n >= 1000) return `$${(n / 1000).toFixed(0)}K`;
+    return `$${Math.round(n)}`;
+  };
+
+  const timeCost = adminHours * hourlyRate * 52;
+  const jobCost = annualRevenue * (marginLeak / 100);
+  const overheadCost = monthlyOverheads * (overheadDrift / 100) * 12;
+  const totalHidden = timeCost + jobCost + overheadCost;
+  const annualWorryHours = worryHours * 52;
+  const worryFullDays = annualWorryHours / 24;
+  const worryWorkingDays = annualWorryHours / 8;
+  const yearOneFee = setupFee + monthlyFee * 12;
+  const weeklyHidden = totalHidden / 52;
+  const paybackWeeks = weeklyHidden > 0 ? Math.ceil(yearOneFee / weeklyHidden) : 0;
+  const feePercent = totalHidden > 0 ? (yearOneFee / totalHidden) * 100 : 0;
+  const paysInQ1 = paybackWeeks > 0 && paybackWeeks <= 13;
+  const inSweetSpot = feePercent > 10;
+  const tooLow = feePercent > 0 && feePercent <= 10;
+  const tooHigh = false;
+
+  return (
+    <div className="w-full font-body" style={{ backgroundColor: T.pageBg }}>
+      <div className="max-w-4xl mx-auto px-5 md:px-8 py-10 md:py-16">
+
+        <div className="mb-10 md:mb-14">
+          <h1 className="font-display text-4xl md:text-6xl font-semibold leading-[1.02]" style={{ color: T.ink }}>
+            What is this{' '}
+            <span style={{ color: T.gold, fontStyle: 'italic', fontWeight: 800 }}>really costing you?</span>
+          </h1>
+        </div>
+
+        <SectionHeader number="01" label="Start here" title="You" subtitle="What's your time worth, and where's it going?" />
+        <section className="rounded-[28px] p-7 md:p-9 mb-4" style={{ backgroundColor: T.surface, color: T.ink }}>
+          <div className="mb-7">
+            <DollarField label="Your time is worth" value={hourlyRate} onChange={setHourlyRate} step={10} suffix="/hr" />
+          </div>
+          <div className="grid sm:grid-cols-2 gap-7 pt-6 border-t" style={{ borderColor: T.surfaceBorder }}>
+            <SliderField label="Hours / week on financial admin" value={adminHours} onChange={setAdminHours} min={0} max={40} step={0.5} minLabel="0" maxLabel="40 hrs" />
+            <SliderField label="Hours / week worrying about money" value={worryHours} onChange={setWorryHours} min={0} max={15} step={0.5} minLabel="Rarely" maxLabel="Constant" />
+          </div>
+          <div className="grid sm:grid-cols-2 gap-5 pt-6 mt-7 border-t" style={{ borderColor: T.surfaceBorder }}>
+            <DollarField label="Setup fee (one-off)" value={setupFee} onChange={setSetupFee} step={100} />
+            <DollarField label="Monthly fee (ongoing)" value={monthlyFee} onChange={setMonthlyFee} step={50} suffix="/mo" />
+          </div>
+        </section>
+
+        <section className="rounded-[28px] p-7 md:p-9 mb-10" style={{ backgroundColor: T.navy, border: `1px solid ${T.navyBorder}` }}>
+          <div className="grid md:grid-cols-2 gap-6 md:gap-10">
+            <div className="md:pr-8 md:border-r" style={{ borderColor: T.navyBorder }}>
+              <div className="text-[10px] font-bold uppercase tracking-[0.25em] mb-2" style={{ color: T.onNavyMuted }}>Cost of your admin time</div>
+              <div key={timeCost} className="font-display text-4xl md:text-5xl font-bold tabular-nums pulse-in" style={{ color: T.onNavy }}>
+                {fmt(timeCost)}<span className="text-base font-normal ml-1" style={{ color: T.onNavyMuted }}>/year</span>
+              </div>
+              <p className="text-xs mt-2" style={{ color: T.onNavyMuted }}>{adminHours} hrs/wk × ${hourlyRate}/hr × 52 weeks</p>
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.25em] mb-2" style={{ color: T.onNavyMuted }}>Hours stuck in financial worry</div>
+              <div key={annualWorryHours} className="font-display text-4xl md:text-5xl font-bold tabular-nums pulse-in" style={{ color: T.gold }}>
+                {Math.round(annualWorryHours).toLocaleString()}<span className="text-base font-normal ml-1" style={{ color: T.onNavyMuted }}>hrs/yr</span>
+              </div>
+              <p className="text-xs mt-2" style={{ color: T.onNavyMuted }}>= {worryFullDays.toFixed(1)} full days · {worryWorkingDays.toFixed(1)} working days</p>
+            </div>
+          </div>
+        </section>
+
+        <div className="connector"></div>
+
+        <SectionHeader number="02" label="Next up" title="Your business" subtitle="Two more numbers — where the money leaks that don't look like time." />
+        <section className="rounded-[28px] p-7 md:p-9 mb-4" style={{ backgroundColor: T.surface, color: T.ink }}>
+          <div className="mb-7">
+            <h3 className="font-display text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: T.ink }}>
+              <span style={{ color: T.gold }}>→</span>Margin leaking out of jobs
+            </h3>
+            <div className="grid sm:grid-cols-2 gap-5">
+              <div>
+                <DollarField label="Annual revenue" value={annualRevenue} onChange={setAnnualRevenue} step={10000} />
+                <p className="text-[10px] mt-1" style={{ color: T.inkFaint }}>Shown as: {fmtShort(annualRevenue)}</p>
+              </div>
+              <SliderField label="Estimated margin leak" value={marginLeak} onChange={setMarginLeak} min={0} max={10} step={0.5} unit="%" />
+            </div>
+            <p className="text-xs mt-3 italic" style={{ color: T.inkFaint }}>Most trade &amp; service businesses estimate 2–6% of revenue disappears into costs they didn't properly quote for.</p>
+          </div>
+          <div className="pt-6 border-t" style={{ borderColor: T.surfaceBorder }}>
+            <h3 className="font-display text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: T.ink }}>
+              <span style={{ color: T.gold }}>→</span>Overheads quietly creeping
+            </h3>
+            <div className="grid sm:grid-cols-2 gap-5">
+              <DollarField label="Monthly overheads" value={monthlyOverheads} onChange={setMonthlyOverheads} step={500} />
+              <SliderField label="Estimated drift" value={overheadDrift} onChange={setOverheadDrift} min={0} max={20} step={1} unit="%" />
+            </div>
+            <p className="text-xs mt-3 italic" style={{ color: T.inkFaint }}>Subscriptions, supplier price creep, duplicated costs. 5–15% drift is typical if overheads haven't been reviewed in 6+ months.</p>
+          </div>
+        </section>
+
+        <section className="rounded-[28px] p-7 md:p-9 mb-10" style={{ backgroundColor: T.navy, border: `1px solid ${T.navyBorder}` }}>
+          <div className="grid md:grid-cols-2 gap-6 md:gap-10">
+            <div className="md:pr-8 md:border-r" style={{ borderColor: T.navyBorder }}>
+              <div className="text-[10px] font-bold uppercase tracking-[0.25em] mb-2" style={{ color: T.onNavyMuted }}>Margin lost on jobs</div>
+              <div key={jobCost} className="font-display text-4xl md:text-5xl font-bold tabular-nums pulse-in" style={{ color: T.onNavy }}>
+                {fmt(jobCost)}<span className="text-base font-normal ml-1" style={{ color: T.onNavyMuted }}>/year</span>
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.25em] mb-2" style={{ color: T.onNavyMuted }}>Overhead bleed</div>
+              <div key={overheadCost} className="font-display text-4xl md:text-5xl font-bold tabular-nums pulse-in" style={{ color: T.onNavy }}>
+                {fmt(overheadCost)}<span className="text-base font-normal ml-1" style={{ color: T.onNavyMuted }}>/year</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div className="connector"></div>
+
+        <SectionHeader number="03" label="Put it together" title="The true cost" subtitle="What you're paying — in dollars and in days of your life — to keep things the way they are." />
+        <section className="rounded-[28px] p-8 md:p-12 mb-5 text-center" style={{ backgroundColor: T.navy, border: `1px solid ${T.navyBorder}` }}>
+          <div className="text-[11px] font-bold uppercase tracking-[0.3em] mb-3" style={{ color: T.onNavyMuted }}>The annual tax on flying blind</div>
+          <div key={totalHidden} className="font-display text-6xl md:text-8xl font-bold leading-none mb-2 tabular-nums pulse-in" style={{ color: T.gold }}>{fmt(totalHidden)}</div>
+          <div className="font-display text-lg md:text-xl italic mb-8" style={{ color: T.onNavyMuted }}>every year. silently. three places at once.</div>
+
+          {totalHidden > 0 && (
+            <div className="max-w-xl mx-auto mb-8">
+              <div className="h-3 rounded-full overflow-hidden flex" style={{ backgroundColor: T.navyBorder }}>
+                <div className="h-full transition-all duration-300" style={{ width: `${(timeCost / totalHidden) * 100}%`, backgroundColor: T.gold }}></div>
+                <div className="h-full transition-all duration-300" style={{ width: `${(jobCost / totalHidden) * 100}%`, backgroundColor: T.onNavy }}></div>
+                <div className="h-full transition-all duration-300" style={{ width: `${(overheadCost / totalHidden) * 100}%`, backgroundColor: '#7FA8D4' }}></div>
+              </div>
+              <div className="flex justify-between text-[10px] mt-3 font-semibold uppercase tracking-wider gap-2 flex-wrap">
+                <span style={{ color: T.gold }}>● Time {fmtShort(timeCost)}</span>
+                <span style={{ color: T.onNavy }}>● Jobs {fmtShort(jobCost)}</span>
+                <span style={{ color: '#7FA8D4' }}>● Overheads {fmtShort(overheadCost)}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="max-w-xl mx-auto pt-8 border-t" style={{ borderColor: T.navyBorder }}>
+            <div className="text-[10px] font-bold uppercase tracking-[0.3em] mb-3" style={{ color: T.onNavyMuted }}>And the part no P&amp;L tracks</div>
+            <div className="flex items-baseline justify-center gap-3 flex-wrap">
+              <span className="font-display text-4xl md:text-5xl font-bold tabular-nums" style={{ color: T.onNavy }}>{worryFullDays.toFixed(1)}</span>
+              <span className="font-display text-lg md:text-xl italic" style={{ color: T.onNavyMuted }}>full days of your life — every year — stuck in financial stress.</span>
+            </div>
+          </div>
+        </section>
+
+        <div className="connector"></div>
+
+        <SectionHeader number="04" label="The payback" title="The fix" subtitle="What plugging the leaks costs — and how fast it pays you back." />
+        <section className="rounded-[28px] p-7 md:p-9 mb-5" style={{ backgroundColor: T.surface, color: T.ink }}>
+          <div className="flex items-baseline justify-between flex-wrap gap-3">
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.15em] mb-1" style={{ color: T.inkMuted }}>Total year one</div>
+              <div className="font-display text-3xl md:text-4xl font-bold tabular-nums" style={{ color: T.ink }}>{fmt(yearOneFee)}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-[11px] font-bold uppercase tracking-[0.15em] mb-1" style={{ color: T.inkMuted }}>% of year-one leak</div>
+              <div className="flex items-baseline gap-2 flex-wrap justify-end">
+                <span className="font-display text-3xl font-bold tabular-nums" style={{ color: T.ink }}>{feePercent.toFixed(1)}%</span>
+                <FeePercentBadge inSweetSpot={inSweetSpot} tooLow={tooLow} tooHigh={tooHigh} />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-[28px] p-8 md:p-12 mb-5 text-center" style={{ backgroundColor: T.heroBg, color: T.heroInk }}>
+          <div key={paybackWeeks} className="font-display text-7xl md:text-[9rem] font-bold leading-none mb-1 tabular-nums pulse-in" style={{ color: T.heroInk }}>
+            {paybackWeeks > 0 && isFinite(paybackWeeks) ? paybackWeeks : '—'}
+          </div>
+          <div className="font-display text-2xl md:text-3xl font-semibold italic mb-6" style={{ color: T.heroInk, opacity: 0.75 }}>
+            {paybackWeeks === 1 ? 'week' : 'weeks'}
+          </div>
+          <VerdictBadge paysInQ1={paysInQ1} paybackWeeks={paybackWeeks} />
+        </section>
+
+        <section className="rounded-[28px] p-7 md:p-9" style={{ backgroundColor: T.surface, color: T.ink }}>
+          <p className="font-display text-xl md:text-2xl leading-snug font-medium" style={{ color: T.ink }}>
+            <span style={{ color: T.inkFaint }}>"</span>You're bleeding roughly{' '}
+            <span className="font-bold" style={{ color: T.navy }}>{fmt(totalHidden)}/year</span> across admin time, job-costing blind spots and overhead drift — plus about{' '}
+            <span className="font-bold" style={{ color: T.navy }}>{Math.round(annualWorryHours)} hours a year</span> worrying about it. Getting the system in place costs{' '}
+            <span className="font-bold" style={{ color: T.navy }}>{fmt(yearOneFee)}</span> in year one. Pays for itself in{' '}
+            <span className="font-bold" style={{ color: T.navy }}>{paybackWeeks} {paybackWeeks === 1 ? 'week' : 'weeks'}</span>.
+            <span style={{ color: T.inkFaint }}>"</span>
+          </p>
+        </section>
+
+        <p className="text-[11px] text-center mt-8 leading-relaxed max-w-xl mx-auto" style={{ color: T.inkFaint }}>
+          Rough guide only. Numbers are estimates based on the client's own inputs — designed to spark a conversation, not replace a forensic audit.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<Calculator />);
+  </script>
+</body>
+</html>
